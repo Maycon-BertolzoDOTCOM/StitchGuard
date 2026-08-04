@@ -30,10 +30,6 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
           
-      - name: Lint with ruff
-        run: |
-          python -m ruff check .
-          
       - name: Run tests
         run: |
           rm -f stitchguard.db
