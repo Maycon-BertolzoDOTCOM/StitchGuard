@@ -13,10 +13,10 @@ test-q: ## Executa testes (modo quiet)
 	./venv/bin/python -m pytest tests/ -q --tb=line
 
 lint: ## Verifica código com ruff
-	./venv/bin/ruff check .
+	./venv/bin/python -m ruff check .
 
 lint-fix: ## Corrige problemas de lint
-	./venv/bin/ruff check --fix .
+	./venv/bin/python -m ruff check --fix .
 
 run: ## Inicia a API (dev)
 	./venv/bin/uvicorn application.main:app --reload --port 8000
