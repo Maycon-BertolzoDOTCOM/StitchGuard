@@ -1,0 +1,59 @@
+[
+  {
+    "image_id": "exemplo_001",
+    "stitch_types": [
+      "satin"
+    ],
+    "regions": [
+      {
+        "type": "satin",
+        "bbox": [
+          0,
+          0,
+          50,
+          10
+        ]
+      }
+    ],
+    "fabric": "jeans",
+    "density": 0.45
+  },
+  {
+    "image_id": "exemplo_002",
+    "stitch_types": [
+      "fill"
+    ],
+    "regions": [
+      {
+        "type": "fill",
+        "bbox": [
+          0,
+          0,
+          30,
+          30
+        ]
+      }
+    ],
+    "fabric": "malha",
+    "density": 0.4
+  },
+  {
+    "image_id": "exemplo_003",
+    "stitch_types": [
+      "running"
+    ],
+    "regions": [
+      {
+        "type": "running",
+        "bbox": [
+          0,
+          0,
+          100,
+          5
+        ]
+      }
+    ],
+    "fabric": "nylon",
+    "density": 0.5
+  }
+]

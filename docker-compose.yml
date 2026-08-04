@@ -1,0 +1,153 @@
+version: "3.9"
+
+services:
+  # --------------------------------------------------------------------------
+  # API FastAPI
+  # --------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: stitchguard-api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - STITCHGUARD_DB_URL=postgresql+psycopg2://stitchguard:${POSTGRES_PASSWORD}@postgres:5432/stitchguard
+      - REDIS_URL=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - S3_BUCKET=stitchguard
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    volumes:
+      - artifacts:/app/tmp/artifacts
+    networks:
+      - stitchguard-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # --------------------------------------------------------------------------
+  # Worker ARQ (fila de jobs)
+  # --------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: stitchguard-worker
+    restart: unless-stopped
+    environment:
+      - STITCHGUARD_DB_URL=postgresql+psycopg2://stitchguard:${POSTGRES_PASSWORD}@postgres:5432/stitchguard
+      - REDIS_URL=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - S3_BUCKET=stitchguard
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    volumes:
+      - artifacts:/app/tmp/artifacts
+    networks:
+      - stitchguard-net
+    command: ["arq", "infra.worker.WorkerSettings"]
+
+  # --------------------------------------------------------------------------
+  # PostgreSQL
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: stitchguard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stitchguard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stitchguard_dev}
+      POSTGRES_DB: stitchguard
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - stitchguard-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stitchguard -d stitchguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --------------------------------------------------------------------------
+  # Redis (fila + cache)
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: stitchguard-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - stitchguard-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # --------------------------------------------------------------------------
+  # MinIO (S3-compatible storage)
+  # --------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: stitchguard-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - stitchguard-net
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  artifacts:
+    driver: local
+
+networks:
+  stitchguard-net:
+    driver: bridge

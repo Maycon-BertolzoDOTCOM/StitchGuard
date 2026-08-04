@@ -1,0 +1,22 @@
+# === Dependencias de producao ===
+fastapi>=0.141
+uvicorn[standard]>=0.52
+python-multipart>=0.0.32
+pyembroidery>=1.5.1
+Pillow>=12.0
+SQLAlchemy>=2.0
+structlog>=26.1
+
+# === PostgreSQL ===
+psycopg2-binary>=2.9
+
+# === Redis + Job Queue ===
+arq>=0.28.0
+redis>=5.0
+
+# === S3 ===
+boto3>=1.35
+
+# === Auth JWT ===
+python-jose[cryptography]>=3.3
+passlib[bcrypt]>=1.7
