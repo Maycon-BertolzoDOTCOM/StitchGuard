@@ -70,7 +70,11 @@ app = FastAPI(
 from application.auth.router import router as auth_router
 app.include_router(auth_router)
 
-_ARTEFATOS = tempfile.mkdtemp(prefix="stitchguard-")
+_ARTEFATOS = os.environ.get(
+    "STITCHGUARD_ARTEFATOS",
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "artefatos"),
+)
+os.makedirs(_ARTEFATOS, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -193,17 +197,20 @@ def presets():
 
 
 # ---------------------------------------------------------------------------
-# Upload de imagem (SVG/PNG) -> conversao automatica para .dst
+# Upload de imagem (SVG/PNG/.dst) -> conversao automatica para .dst
 # ---------------------------------------------------------------------------
 @app.post("/v1/upload")
 async def upload_imagem(
-    arquivo: UploadFile = File(..., description="SVG ou PNG para converter em .dst"),
+    arquivo: UploadFile = File(..., description="SVG, PNG ou .dst para processar"),
     tecido: str | None = Form(None),
 ):
-    """Recebe SVG/PNG, extrai silhueta e gera .dst com preview."""
+    """Recebe SVG/PNG/.dst, processa e gera preview + validação."""
+    import pyembroidery as pe
     from generation.image_processor import processar_imagem
+    from validation.checklist import run_checklist
+    from validation.metrics import StitchMetrics
 
-    extensoes_validas = (".svg", ".png", ".jpg", ".jpeg", ".bmp", ".gif")
+    extensoes_validas = (".svg", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".dst")
     if not arquivo.filename.lower().endswith(extensoes_validas):
         raise HTTPException(
             status_code=400,
@@ -218,7 +225,12 @@ async def upload_imagem(
         fh.write(conteudo)
 
     try:
-        pattern = processar_imagem(caminho_entrada, tecido or "generico")
+        if ext.lower() == ".dst":
+            # Upload de .dst direto: apenas ler e gerar preview
+            pattern = pe.read(caminho_entrada)
+        else:
+            # Upload de imagem: processar e converter
+            pattern = processar_imagem(caminho_entrada, tecido or "generico")
 
         if not pattern.stitches:
             raise HTTPException(status_code=422, detail="Nao foi possivel extrair pontos da imagem.")
@@ -226,13 +238,17 @@ async def upload_imagem(
         # Salvar .dst
         dst_nome = f"{uuid.uuid4().hex[:8]}.dst"
         dst_path = os.path.join(_ARTEFATOS, dst_nome)
-        import pyembroidery as pe
         pe.write(pattern, dst_path)
 
         # Gerar preview SVG
         svg_nome = f"{uuid.uuid4().hex[:8]}.svg"
         svg_path = os.path.join(_ARTEFATOS, svg_nome)
         pe.write(pattern, svg_path)
+
+        # Validar
+        params = {"tecido": tecido or "generico", "maquina_id": "generica"}
+        metrics = StitchMetrics(dst_path)
+        resultado = run_checklist(metrics, params)
 
         log.info("upload.concluido", arquivo=arquivo.filename, stitches=len(pattern.stitches))
 
@@ -242,10 +258,11 @@ async def upload_imagem(
             "preview_svg": svg_nome,
             "resumo": {
                 "stitches": len(pattern.stitches),
-                "cores": len(pattern.threadlist),
-                "largura_mm": round(pattern.bounds()[2] - pattern.bounds()[0], 2),
-                "altura_mm": round(pattern.bounds()[3] - pattern.bounds()[1], 2),
+                "cores": len(list(pattern.get_as_colorblocks())),
+                "largura_mm": round(metrics.width_mm, 2),
+                "altura_mm": round(metrics.height_mm, 2),
             },
+            "validacao": resultado,
         }
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -368,6 +385,71 @@ def baixar_arquivo(filename: str):
     else:
         media_type = "application/octet-stream"
     return FileResponse(caminho, media_type=media_type, filename=filename)
+
+
+# ---------------------------------------------------------------------------
+# Export multi-formato (conversão automática DST→PES/EXP/VP3/XXX)
+# ---------------------------------------------------------------------------
+FORMATOS_SUPORTADOS = {
+    "dst": "Tajima (padrão da indústria)",
+    "pes": "Brother / Baby Lock",
+    "exp": "Melco / Compucon",
+    "vp3": "Pfaff / Hobby",
+    "xxx": "Toyota / Singer",
+    "u01": "Barudan",
+    "jef": "Janome",
+    "svg": "Visualização (não é formato de máquina)",
+}
+
+
+class ExportRequest(BaseModel):
+    """Corpo de POST /v1/exportar."""
+    formato: str = "dst"
+
+
+@app.post("/v1/pedido/{job_id}/exportar")
+def exportar_formato(job_id: str, payload: ExportRequest):
+    """Exporta matriz em qualquer formato suportado (DST, PES, EXP, VP3, XXX)."""
+    import pyembroidery as pe
+
+    formato = payload.formato.lower().strip(".")
+    if formato not in FORMATOS_SUPORTADOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Formato '{payload.formato}' nao suportado. Use: {', '.join(FORMATOS_SUPORTADOS.keys())}",
+        )
+
+    job = fila.obter_job(job_id)
+    if job is None or job["status"] != fila.STATUS_CONCLUIDO:
+        raise HTTPException(status_code=404, detail="Job nao encontrado ou nao concluido.")
+
+    dst_nome = job["resultado"]["dst"]
+    dst_caminho = os.path.join(_ARTEFATOS, dst_nome)
+    if not os.path.exists(dst_caminho):
+        raise HTTPException(status_code=404, detail="Arquivo .dst nao encontrado.")
+
+    try:
+        pattern = pe.read(dst_caminho)
+        export_nome = f"{uuid.uuid4().hex[:8]}.{formato}"
+        export_caminho = os.path.join(_ARTEFATOS, export_nome)
+        pe.write(pattern, export_caminho)
+
+        log.info("export.concluido", job_id=job_id, formato=formato)
+
+        return {
+            "arquivo": export_nome,
+            "formato": formato,
+            "download_url": f"/v1/arquivos/{export_nome}",
+        }
+    except Exception as e:
+        log.error("export.erro", job_id=job_id, erro=str(e))
+        raise HTTPException(status_code=500, detail=f"Erro ao exportar: {str(e)}")
+
+
+@app.get("/v1/formatos")
+def listar_formatos():
+    """Lista formatos de exportação suportados."""
+    return {"formatos": FORMATOS_SUPORTADOS}
 
 
 def _dst_para_svg(dst_path: str) -> str:

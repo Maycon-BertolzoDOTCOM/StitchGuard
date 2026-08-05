@@ -37,6 +37,7 @@ Thumbs.db
 INPUT/
 OUTPUT/
 ARTEFATOS/
+artefatos/
 logs/
 *.log
 
