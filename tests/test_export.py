@@ -140,3 +140,44 @@ class TestLettering:
         assert "block" in r.json()["fontes"]
         assert "script" in r.json()["fontes"]
         assert "bold" in r.json()["fontes"]
+
+
+class TestBatch:
+    def test_batch_upload(self):
+        headers = _auth_header()
+        with open("tests/fixtures/limpo.dst", "rb") as f1, \
+             open("tests/fixtures/limpo.dst", "rb") as f2:
+            r = client.post(
+                "/v1/batch",
+                files=[
+                    ("arquivos", ("teste1.dst", f1, "application/octet-stream")),
+                    ("arquivos", ("teste2.dst", f2, "application/octet-stream")),
+                ],
+                data={"tecido": "jeans", "formato": "dst"},
+                headers=headers,
+            )
+        assert r.status_code == 200
+        assert r.json()["total"] == 2
+        assert r.json()["processados"] == 2
+
+    def test_batch_formato_invalido(self):
+        headers = _auth_header()
+        r = client.post(
+            "/v1/batch",
+            files=[("arquivos", ("teste.txt", b"conteudo", "text/plain"))],
+            headers=headers,
+        )
+        assert r.status_code == 400  # Nenhum arquivo válido
+
+
+class TestDashboard:
+    def test_dashboard(self):
+        headers = _auth_header()
+        r = client.get("/v1/dashboard", headers=headers)
+        assert r.status_code == 200
+        assert "estatisticas" in r.json()
+        assert "ultimos_jobs" in r.json()
+
+    def test_dashboard_sem_auth(self):
+        r = client.get("/v1/dashboard")
+        assert r.status_code == 401

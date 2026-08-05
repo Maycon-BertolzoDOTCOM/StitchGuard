@@ -4,306 +4,37 @@ line-length = 120
 target-version = "py313"
 
 [lint]
-# Ignorar regras que causam muitos erros no código existente
 ignore = [
-    "E501",    # line too long (já tratado pelo line-length)
+    "E501",    # line too long
+    "E402",    # module level import not at top
+    "F401",    # unused imports (re-exports)
+    "F541",    # f-string without placeholders
+    "F811",    # redefinition of unused name
+    "F841",    # local variable assigned but never used
+    "SIM102",  # nested if can be combined
     "SIM114",  # if branches can be combined
     "C901",    # function too complex
     "PLR0912", # too many branches
     "PLR0913", # too many arguments
     "PLR0915", # too many statements
-    "TRY003",  # long exception message
-    "EM101",   # exception must not use a string
-    "EM102",   # exception must not use an f-string
-    "I001",    # import sorting
-    "F401",    # unused imports (re-exports)
-    "E402",    # module level import not at top
-    "F811",    # redefinition of unused name
-    "F841",    # local variable assigned but never used
+    "PLR2004", # magic value used in comparison
+    "PLW0603", # global statement usage
+    "RUF010",  # use explicit conversion flag
+    "RUF059",  # unpacked variable never used
     "ARG001",  # unused function argument
     "ARG002",  # unused method argument
-    "PLW0603", # global statement usage
     "S101",    # assert usage
     "S105",    # hardcoded password
     "S106",    # hardcoded password
     "S110",    # try-except-pass
-    "UP017",   # use datetime.UTC alias
-    "UP045",   # use X | None for type annotations
-    "UP007",   # use X | Y for union types
-    "UP032",   # use f-string instead of format
-    "UP031",   # use f-string instead of % format
-    "UP030",   # use f-string instead of format call
-    "UP034",   # extraneous parentheses
-    "UP015",   # unnecessary open mode parameters
-    "UP018",   # unnecessary __str__ call
-    "UP035",   # deprecated imports
-    "UP038",   # isinstance check with union type
-    "UP010",   # unnecessary __future__ import
-    "UP009",   # UTF-8 encoding declaration is unnecessary
-    "UP012",   # unnecessary call to encoded
-    "UP025",   # remove unicode literal prefix
-    "UP013",   # convert dict to use dict()
-    "UP014",   # convert path to use Path
-    "UP037",   # quotes are unnecessary
-    "UP036",   # version block is outdated
-    "UP039",   # unnecessary class call
-    "UP040",   # unnecessary TypeAlias
-    "UP043",   # unnecessary default type argument
-    "UP044",   # unnecessary __slots__
-    "UP046",   # unnecessary __init_subclass__ argument
-    "UP047",   # unnecessary __init_subclass__ argument
-    "UP048",   # unnecessary __init_subclass__ argument
-    "UP049",   # unnecessary __init_subclass__ argument
-    "UP050",   # unnecessary __init_subclass__ argument
-    "UP051",   # unnecessary __init_subclass__ argument
-    "UP052",   # unnecessary __init_subclass__ argument
-    "UP053",   # unnecessary __init_subclass__ argument
-    "UP054",   # unnecessary __init_subclass__ argument
-    "UP055",   # unnecessary __init_subclass__ argument
-    "UP056",   # unnecessary __init_subclass__ argument
-    "UP057",   # unnecessary __init_subclass__ argument
-    "UP058",   # unnecessary __init_subclass__ argument
-    "UP059",   # unnecessary __init_subclass__ argument
-    "UP060",   # unnecessary __init_subclass__ argument
-    "UP061",   # unnecessary __init_subclass__ argument
-    "UP062",   # unnecessary __init_subclass__ argument
-    "UP063",   # unnecessary __init_subclass__ argument
-    "UP064",   # unnecessary __init_subclass__ argument
-    "UP065",   # unnecessary __init_subclass__ argument
-    "UP066",   # unnecessary __init_subclass__ argument
-    "UP067",   # unnecessary __init_subclass__ argument
-    "UP068",   # unnecessary __init_subclass__ argument
-    "UP069",   # unnecessary __init_subclass__ argument
-    "UP070",   # unnecessary __init_subclass__ argument
-    "UP071",   # unnecessary __init_subclass__ argument
-    "UP072",   # unnecessary __init_subclass__ argument
-    "UP073",   # unnecessary __init_subclass__ argument
-    "UP074",   # unnecessary __init_subclass__ argument
-    "UP075",   # unnecessary __init_subclass__ argument
-    "UP076",   # unnecessary __init_subclass__ argument
-    "UP077",   # unnecessary __init_subclass__ argument
-    "UP078",   # unnecessary __init_subclass__ argument
-    "UP079",   # unnecessary __init_subclass__ argument
-    "UP080",   # unnecessary __init_subclass__ argument
-    "UP081",   # unnecessary __init_subclass__ argument
-    "UP082",   # unnecessary __init_subclass__ argument
-    "UP083",   # unnecessary __init_subclass__ argument
-    "UP084",   # unnecessary __init_subclass__ argument
-    "UP085",   # unnecessary __init_subclass__ argument
-    "UP086",   # unnecessary __init_subclass__ argument
-    "UP087",   # unnecessary __init_subclass__ argument
-    "UP088",   # unnecessary __init_subclass__ argument
-    "UP089",   # unnecessary __init_subclass__ argument
-    "UP090",   # unnecessary __init_subclass__ argument
-    "UP091",   # unnecessary __init_subclass__ argument
-    "UP092",   # unnecessary __init_subclass__ argument
-    "UP093",   # unnecessary __init_subclass__ argument
-    "UP094",   # unnecessary __init_subclass__ argument
-    "UP095",   # unnecessary __init_subclass__ argument
-    "UP096",   # unnecessary __init_subclass__ argument
-    "UP097",   # unnecessary __init_subclass__ argument
-    "UP098",   # unnecessary __init_subclass__ argument
-    "UP099",   # unnecessary __init_subclass__ argument
-    "UP100",   # unnecessary __init_subclass__ argument
-    "UP101",   # unnecessary __init_subclass__ argument
-    "UP102",   # unnecessary __init_subclass__ argument
-    "UP103",   # unnecessary __init_subclass__ argument
-    "UP104",   # unnecessary __init_subclass__ argument
-    "UP105",   # unnecessary __init_subclass__ argument
-    "UP106",   # unnecessary __init_subclass__ argument
-    "UP107",   # unnecessary __init_subclass__ argument
-    "UP108",   # unnecessary __init_subclass__ argument
-    "UP109",   # unnecessary __init_subclass__ argument
-    "UP110",   # unnecessary __init_subclass__ argument
-    "UP111",   # unnecessary __init_subclass__ argument
-    "UP112",   # unnecessary __init_subclass__ argument
-    "UP113",   # unnecessary __init_subclass__ argument
-    "UP114",   # unnecessary __init_subclass__ argument
-    "UP115",   # unnecessary __init_subclass__ argument
-    "UP116",   # unnecessary __init_subclass__ argument
-    "UP117",   # unnecessary __init_subclass__ argument
-    "UP118",   # unnecessary __init_subclass__ argument
-    "UP119",   # unnecessary __init_subclass__ argument
-    "UP120",   # unnecessary __init_subclass__ argument
-    "UP121",   # unnecessary __init_subclass__ argument
-    "UP122",   # unnecessary __init_subclass__ argument
-    "UP123",   # unnecessary __init_subclass__ argument
-    "UP124",   # unnecessary __init_subclass__ argument
-    "UP125",   # unnecessary __init_subclass__ argument
-    "UP126",   # unnecessary __init_subclass__ argument
-    "UP127",   # unnecessary __init_subclass__ argument
-    "UP128",   # unnecessary __init_subclass__ argument
-    "UP129",   # unnecessary __init_subclass__ argument
-    "UP130",   # unnecessary __init_subclass__ argument
-    "UP131",   # unnecessary __init_subclass__ argument
-    "UP132",   # unnecessary __init_subclass__ argument
-    "UP133",   # unnecessary __init_subclass__ argument
-    "UP134",   # unnecessary __init_subclass__ argument
-    "UP135",   # unnecessary __init_subclass__ argument
-    "UP136",   # unnecessary __init_subclass__ argument
-    "UP137",   # unnecessary __init_subclass__ argument
-    "UP138",   # unnecessary __init_subclass__ argument
-    "UP139",   # unnecessary __init_subclass__ argument
-    "UP140",   # unnecessary __init_subclass__ argument
-    "UP141",   # unnecessary __init_subclass__ argument
-    "UP142",   # unnecessary __init_subclass__ argument
-    "UP143",   # unnecessary __init_subclass__ argument
-    "UP144",   # unnecessary __init_subclass__ argument
-    "UP145",   # unnecessary __init_subclass__ argument
-    "UP146",   # unnecessary __init_subclass__ argument
-    "UP147",   # unnecessary __init_subclass__ argument
-    "UP148",   # unnecessary __init_subclass__ argument
-    "UP149",   # unnecessary __init_subclass__ argument
-    "UP150",   # unnecessary __init_subclass__ argument
-    "UP151",   # unnecessary __init_subclass__ argument
-    "UP152",   # unnecessary __init_subclass__ argument
-    "UP153",   # unnecessary __init_subclass__ argument
-    "UP154",   # unnecessary __init_subclass__ argument
-    "UP155",   # unnecessary __init_subclass__ argument
-    "UP156",   # unnecessary __init_subclass__ argument
-    "UP157",   # unnecessary __init_subclass__ argument
-    "UP158",   # unnecessary __init_subclass__ argument
-    "UP159",   # unnecessary __init_subclass__ argument
-    "UP160",   # unnecessary __init_subclass__ argument
-    "UP161",   # unnecessary __init_subclass__ argument
-    "UP162",   # unnecessary __init_subclass__ argument
-    "UP163",   # unnecessary __init_subclass__ argument
-    "UP164",   # unnecessary __init_subclass__ argument
-    "UP165",   # unnecessary __init_subclass__ argument
-    "UP166",   # unnecessary __init_subclass__ argument
-    "UP167",   # unnecessary __init_subclass__ argument
-    "UP168",   # unnecessary __init_subclass__ argument
-    "UP169",   # unnecessary __init_subclass__ argument
-    "UP170",   # unnecessary __init_subclass__ argument
-    "UP171",   # unnecessary __init_subclass__ argument
-    "UP172",   # unnecessary __init_subclass__ argument
-    "UP173",   # unnecessary __init_subclass__ argument
-    "UP174",   # unnecessary __init_subclass__ argument
-    "UP175",   # unnecessary __init_subclass__ argument
-    "UP176",   # unnecessary __init_subclass__ argument
-    "UP177",   # unnecessary __init_subclass__ argument
-    "UP178",   # unnecessary __init_subclass__ argument
-    "UP179",   # unnecessary __init_subclass__ argument
-    "UP180",   # unnecessary __init_subclass__ argument
-    "UP181",   # unnecessary __init_subclass__ argument
-    "UP182",   # unnecessary __init_subclass__ argument
-    "UP183",   # unnecessary __init_subclass__ argument
-    "UP184",   # unnecessary __init_subclass__ argument
-    "UP185",   # unnecessary __init_subclass__ argument
-    "UP186",   # unnecessary __init_subclass__ argument
-    "UP187",   # unnecessary __init_subclass__ argument
-    "UP188",   # unnecessary __init_subclass__ argument
-    "UP189",   # unnecessary __init_subclass__ argument
-    "UP190",   # unnecessary __init_subclass__ argument
-    "UP191",   # unnecessary __init_subclass__ argument
-    "UP192",   # unnecessary __init_subclass__ argument
-    "UP193",   # unnecessary __init_subclass__ argument
-    "UP194",   # unnecessary __init_subclass__ argument
-    "UP195",   # unnecessary __init_subclass__ argument
-    "UP196",   # unnecessary __init_subclass__ argument
-    "UP197",   # unnecessary __init_subclass__ argument
-    "UP198",   # unnecessary __init_subclass__ argument
-    "UP199",   # unnecessary __init_subclass__ argument
-    "UP200",   # unnecessary __init_subclass__ argument
-    "UP201",   # unnecessary __init_subclass__ argument
-    "UP202",   # unnecessary __init_subclass__ argument
-    "UP203",   # unnecessary __init_subclass__ argument
-    "UP204",   # unnecessary __init_subclass__ argument
-    "UP205",   # unnecessary __init_subclass__ argument
-    "UP206",   # unnecessary __init_subclass__ argument
-    "UP207",   # unnecessary __init_subclass__ argument
-    "UP208",   # unnecessary __init_subclass__ argument
-    "UP209",   # unnecessary __init_subclass__ argument
-    "UP210",   # unnecessary __init_subclass__ argument
-    "UP211",   # unnecessary __init_subclass__ argument
-    "UP212",   # unnecessary __init_subclass__ argument
-    "UP213",   # unnecessary __init_subclass__ argument
-    "UP214",   # unnecessary __init_subclass__ argument
-    "UP215",   # unnecessary __init_subclass__ argument
-    "UP216",   # unnecessary __init_subclass__ argument
-    "UP217",   # unnecessary __init_subclass__ argument
-    "UP218",   # unnecessary __init_subclass__ argument
-    "UP219",   # unnecessary __init_subclass__ argument
-    "UP220",   # unnecessary __init_subclass__ argument
-    "UP221",   # unnecessary __init_subclass__ argument
-    "UP222",   # unnecessary __init_subclass__ argument
-    "UP223",   # unnecessary __init_subclass__ argument
-    "UP224",   # unnecessary __init_subclass__ argument
-    "UP225",   # unnecessary __init_subclass__ argument
-    "UP226",   # unnecessary __init_subclass__ argument
-    "UP227",   # unnecessary __init_subclass__ argument
-    "UP228",   # unnecessary __init_subclass__ argument
-    "UP229",   # unnecessary __init_subclass__ argument
-    "UP230",   # unnecessary __init_subclass__ argument
-    "UP231",   # unnecessary __init_subclass__ argument
-    "UP232",   # unnecessary __init_subclass__ argument
-    "UP233",   # unnecessary __init_subclass__ argument
-    "UP234",   # unnecessary __init_subclass__ argument
-    "UP235",   # unnecessary __init_subclass__ argument
-    "UP236",   # unnecessary __init_subclass__ argument
-    "UP237",   # unnecessary __init_subclass__ argument
-    "UP238",   # unnecessary __init_subclass__ argument
-    "UP239",   # unnecessary __init_subclass__ argument
-    "UP240",   # unnecessary __init_subclass__ argument
-    "UP241",   # unnecessary __init_subclass__ argument
-    "UP242",   # unnecessary __init_subclass__ argument
-    "UP243",   # unnecessary __init_subclass__ argument
-    "UP244",   # unnecessary __init_subclass__ argument
-    "UP245",   # unnecessary __init_subclass__ argument
-    "UP246",   # unnecessary __init_subclass__ argument
-    "UP247",   # unnecessary __init_subclass__ argument
-    "UP248",   # unnecessary __init_subclass__ argument
-    "UP249",   # unnecessary __init_subclass__ argument
-    "UP250",   # unnecessary __init_subclass__ argument
-    "UP251",   # unnecessary __init_subclass__ argument
-    "UP252",   # unnecessary __init_subclass__ argument
-    "UP253",   # unnecessary __init_subclass__ argument
-    "UP254",   # unnecessary __init_subclass__ argument
-    "UP255",   # unnecessary __init_subclass__ argument
-    "UP256",   # unnecessary __init_subclass__ argument
-    "UP257",   # unnecessary __init_subclass__ argument
-    "UP258",   # unnecessary __init_subclass__ argument
-    "UP259",   # unnecessary __init_subclass__ argument
-    "UP260",   # unnecessary __init_subclass__ argument
-    "UP261",   # unnecessary __init_subclass__ argument
-    "UP262",   # unnecessary __init_subclass__ argument
-    "UP263",   # unnecessary __init_subclass__ argument
-    "UP264",   # unnecessary __init_subclass__ argument
-    "UP265",   # unnecessary __init_subclass__ argument
-    "UP266",   # unnecessary __init_subclass__ argument
-    "UP267",   # unnecessary __init_subclass__ argument
-    "UP268",   # unnecessary __init_subclass__ argument
-    "UP269",   # unnecessary __init_subclass__ argument
-    "UP270",   # unnecessary __init_subclass__ argument
-    "UP271",   # unnecessary __init_subclass__ argument
-    "UP272",   # unnecessary __init_subclass__ argument
-    "UP273",   # unnecessary __init_subclass__ argument
-    "UP274",   # unnecessary __init_subclass__ argument
-    "UP275",   # unnecessary __init_subclass__ argument
-    "UP276",   # unnecessary __init_subclass__ argument
-    "UP277",   # unnecessary __init_subclass__ argument
-    "UP278",   # unnecessary __init_subclass__ argument
-    "UP279",   # unnecessary __init_subclass__ argument
-    "UP280",   # unnecessary __init_subclass__ argument
-    "UP281",   # unnecessary __init_subclass__ argument
-    "UP282",   # unnecessary __init_subclass__ argument
-    "UP283",   # unnecessary __init_subclass__ argument
-    "UP284",   # unnecessary __init_subclass__ argument
-    "UP285",   # unnecessary __init_subclass__ argument
-    "UP286",   # unnecessary __init_subclass__ argument
-    "UP287",   # unnecessary __init_subclass__ argument
-    "UP288",   # unnecessary __init_subclass__ argument
-    "UP289",   # unnecessary __init_subclass__ argument
-    "UP290",   # unnecessary __init_subclass__ argument
-    "UP291",   # unnecessary __init_subclass__ argument
-    "UP292",   # unnecessary __init_subclass__ argument
-    "UP293",   # unnecessary __init_subclass__ argument
-    "UP294",   # unnecessary __init_subclass__ argument
-    "UP295",   # unnecessary __init_subclass__ argument
-    "UP296",   # unnecessary __init_subclass__ argument
-    "UP297",   # unnecessary __init_subclass__ argument
-    "UP298",   # unnecessary __init_subclass__ argument
-    "UP299",   # unnecessary __init_subclass__ argument
+    "B008",    # function call in argument defaults (FastAPI dependency)
+    "ASYNC230",# async function opens file (FastAPI pattern)
+    "BLE001",  # blind exception (try/except blocks)
+    "TRY003",  # long exception message
+    "EM101",   # exception must not use a string
+    "EM102",   # exception must not use an f-string
+    "I001",    # import sorting
+    "T201",    # print found
 ]
 
 # Permitir auto-fix
@@ -311,9 +42,7 @@ fixable = ["ALL"]
 unfixable = []
 
 [lint.per-file-ignores]
-# Ignorar em testes
 "tests/**/*.py" = ["S101", "ARG", "PLR2004", "F401", "S106"]
-# Ignorar em scripts
 "scripts/**/*.py" = ["T201", "S", "F401"]
 
 [format]

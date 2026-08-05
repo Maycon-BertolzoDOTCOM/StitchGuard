@@ -546,6 +546,107 @@ def listar_fontes():
 
 
 # ---------------------------------------------------------------------------
+# Batch processing — múltiplas imagens de uma vez
+# ---------------------------------------------------------------------------
+@app.post("/v1/batch")
+async def processar_batch_endpoint(
+    arquivos: list[UploadFile] = File(..., description="Múltiplos arquivos para processar"),
+    tecido: str = Form("generico"),
+    formato: str = Form("dst"),
+):
+    """Processa múltiplas imagens/arquivos de uma vez (para ateliês com alto volume).
+
+    Aceita PNG, JPG, BMP, GIF e .dst/.pes/.exp existentes.
+    Retorna lista de arquivos gerados com estatísticas.
+    """
+    from generation.batch import processar_batch
+
+    formatos_validos = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".dst", ".pes", ".exp", ".vp3", ".xxx")
+    arquivos_info = []
+
+    for arq in arquivos:
+        if not arq.filename.lower().endswith(formatos_validos):
+            continue
+
+        ext = os.path.splitext(arq.filename)[1]
+        caminho = os.path.join(_ARTEFATOS, f"{uuid.uuid4().hex[:8]}{ext}")
+        conteudo = await arq.read()
+        with open(caminho, "wb") as fh:
+            fh.write(conteudo)
+
+        arquivos_info.append({
+            "filename": arq.filename,
+            "path": caminho,
+        })
+
+    if not arquivos_info:
+        raise HTTPException(status_code=400, detail="Nenhum arquivo válido enviado.")
+
+    resultado = processar_batch(arquivos_info, tecido=tecido, formato_saida=formato)
+
+    log.info("batch.concluido", total=resultado["total"], processados=resultado["processados"])
+
+    return resultado
+
+
+# ---------------------------------------------------------------------------
+# Dashboard — resumo para ateliês
+# ---------------------------------------------------------------------------
+@app.get("/v1/dashboard")
+def dashboard(current_user: Annotated[User, Depends(get_current_user)]):
+    """Dashboard simplificado para ateliês — mostra pedidos recentes e estatísticas."""
+    from sqlalchemy import select, func
+    from infra.storage import SessionLocal, Job
+
+    with SessionLocal() as session:
+        # Total de jobs do usuário
+        total_jobs = session.execute(
+            select(func.count(Job.id)).where(Job.user_id == current_user.id)
+        ).scalar() or 0
+
+        # Jobs concluídos
+        concluidos = session.execute(
+            select(func.count(Job.id)).where(
+                Job.user_id == current_user.id,
+                Job.status == "concluido"
+            )
+        ).scalar() or 0
+
+        # Jobs pendentes
+        pendentes = session.execute(
+            select(func.count(Job.id)).where(
+                Job.user_id == current_user.id,
+                Job.status.in_(["pendente", "processando"])
+            )
+        ).scalar() or 0
+
+        # Últimos 5 jobs
+        ultimos = session.execute(
+            select(Job).where(
+                Job.user_id == current_user.id
+            ).order_by(Job.criado_em.desc()).limit(5)
+        ).scalars().all()
+
+    return {
+        "usuario": current_user.email,
+        "estatisticas": {
+            "total_jobs": total_jobs,
+            "concluidos": concluidos,
+            "pendentes": pendentes,
+            "taxa_sucesso": round(concluidos / max(total_jobs, 1) * 100, 1),
+        },
+        "ultimos_jobs": [
+            {
+                "job_id": j.id,
+                "status": j.status,
+                "criado_em": j.criado_em,
+            }
+            for j in ultimos
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Paleta de cores de threads (cores mais usadas no bordado)
 # ---------------------------------------------------------------------------
 THREAD_COLORS = [
