@@ -589,6 +589,80 @@ async def processar_batch_endpoint(
     return resultado
 
 
+@app.post("/v1/batch/async")
+async def processar_batch_async(
+    arquivos: list[UploadFile] = File(..., description="Múltiplos arquivos para processar assíncrono"),
+    tecido: str = Form("generico"),
+    formato: str = Form("dst"),
+):
+    """Processa batch de forma assíncrona via ARQ (para lots grandes).
+
+    Retorna batch_id para polling via /v1/batch/{batch_id}/status.
+    Requer Redis configurado via REDIS_URL.
+    """
+    import uuid
+    from sqlalchemy import select
+
+    if not app.state.arq_pool:
+        raise HTTPException(
+            status_code=503,
+            detail="Processamento assíncrono requer Redis. Use /v1/batch (síncrono) ou configure REDIS_URL.",
+        )
+
+    formatos_validos = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".dst", ".pes", ".exp", ".vp3", ".xxx")
+    arquivos_info = []
+    _artefatos = os.environ.get("STITCHGUARD_ARTEFATOS", tempfile.gettempdir())
+
+    for arq in arquivos:
+        if not arq.filename.lower().endswith(formatos_validos):
+            continue
+        ext = os.path.splitext(arq.filename)[1]
+        caminho = os.path.join(_artefatos, f"{uuid.uuid4().hex[:8]}{ext}")
+        conteudo = await arq.read()
+        with open(caminho, "wb") as fh:
+            fh.write(conteudo)
+        arquivos_info.append({"filename": arq.filename, "path": caminho})
+
+    if not arquivos_info:
+        raise HTTPException(status_code=400, detail="Nenhum arquivo válido enviado.")
+
+    batch_id = uuid.uuid4().hex[:12]
+
+    # Enfileirar no ARQ
+    from infra.worker import processar_batch as batch_task
+    await app.state.arq_pool.enqueue_job(
+        batch_task,
+        batch_id,
+        json.dumps(arquivos_info),
+        tecido,
+        formato,
+    )
+
+    log.info("batch.async.enfileirado", batch_id=batch_id, n_arquivos=len(arquivos_info))
+
+    return {
+        "batch_id": batch_id,
+        "status": "pendente",
+        "n_arquivos": len(arquivos_info),
+        "poll_url": f"/v1/batch/{batch_id}/status",
+    }
+
+
+@app.get("/v1/batch/{batch_id}/status")
+async def batch_status(batch_id: str):
+    """Verifica status de um batch assíncrono."""
+    if not app.state.arq_pool:
+        raise HTTPException(status_code=503, detail="Redis não disponível.")
+
+    from infra.worker import obter_job_redis
+    resultado = await obter_job_redis(app.state.arq_pool, batch_id)
+
+    if not resultado:
+        raise HTTPException(status_code=404, detail="Batch não encontrado.")
+
+    return resultado
+
+
 # ---------------------------------------------------------------------------
 # Dashboard — resumo para ateliês
 # ---------------------------------------------------------------------------
@@ -644,6 +718,146 @@ def dashboard(current_user: Annotated[User, Depends(get_current_user)]):
             for j in ultimos
         ],
     }
+
+
+@app.get("/v1/dashboard/html")
+def dashboard_html(current_user: Annotated[User, Depends(get_current_user)]):
+    """Dashboard visual HTML para ateliês — interface completa de gerenciamento."""
+    from sqlalchemy import select, func
+    from infra.storage import SessionLocal, Job
+
+    with SessionLocal() as session:
+        total_jobs = session.execute(
+            select(func.count(Job.id)).where(Job.user_id == current_user.id)
+        ).scalar() or 0
+
+        concluidos = session.execute(
+            select(func.count(Job.id)).where(
+                Job.user_id == current_user.id,
+                Job.status == "concluido"
+            )
+        ).scalar() or 0
+
+        pendentes = session.execute(
+            select(func.count(Job.id)).where(
+                Job.user_id == current_user.id,
+                Job.status.in_(["pendente", "processando"])
+            )
+        ).scalar() or 0
+
+        erros = session.execute(
+            select(func.count(Job.id)).where(
+                Job.user_id == current_user.id,
+                Job.status == "erro"
+            )
+        ).scalar() or 0
+
+        ultimos = session.execute(
+            select(Job).where(
+                Job.user_id == current_user.id
+            ).order_by(Job.criado_em.desc()).limit(20)
+        ).scalars().all()
+
+    taxa = round(concluidos / max(total_jobs, 1) * 100, 1)
+
+    html = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StitchGuard — Dashboard do Ateliê</title>
+<style>
+  :root {{ --primary: #6366f1; --success: #10b981; --warning: #f59e0b; --error: #ef4444; --bg: #f8fafc; --card: #fff; }}
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: #1e293b; }}
+  .header {{ background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 24px 32px; }}
+  .header h1 {{ font-size: 24px; font-weight: 700; }}
+  .header p {{ opacity: 0.85; margin-top: 4px; }}
+  .container {{ max-width: 1200px; margin: 0 auto; padding: 24px; }}
+  .stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }}
+  .stat-card {{ background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
+  .stat-card .label {{ font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }}
+  .stat-card .value {{ font-size: 32px; font-weight: 700; margin-top: 4px; }}
+  .stat-card .value.success {{ color: var(--success); }}
+  .stat-card .value.warning {{ color: var(--warning); }}
+  .stat-card .value.error {{ color: var(--error); }}
+  .stat-card .value.primary {{ color: var(--primary); }}
+  .card {{ background: var(--card); border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 16px; }}
+  .card h2 {{ font-size: 18px; margin-bottom: 16px; color: #334155; }}
+  table {{ width: 100%; border-collapse: collapse; }}
+  th, td {{ text-align: left; padding: 12px 16px; border-bottom: 1px solid #e2e8f0; }}
+  th {{ font-size: 12px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }}
+  .badge {{ display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }}
+  .badge.concluido {{ background: #d1fae5; color: #065f46; }}
+  .badge.pendente {{ background: #fef3c7; color: #92400e; }}
+  .badge.processando {{ background: #dbeafe; color: #1e40af; }}
+  .badge.erro {{ background: #fee2e2; color: #991b1b; }}
+  .badge.cancelado {{ background: #e2e8f0; color: #475569; }}
+  .actions {{ margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; }}
+  .btn {{ display: inline-block; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer; border: none; transition: all 0.2s; }}
+  .btn-primary {{ background: var(--primary); color: white; }}
+  .btn-primary:hover {{ background: #4f46e5; }}
+  .btn-outline {{ background: transparent; border: 2px solid #e2e8f0; color: #475569; }}
+  .btn-outline:hover {{ border-color: var(--primary); color: var(--primary); }}
+  .progress-bar {{ width: 100%; height: 8px; background: #e2e8f0; border-radius: 9999px; overflow: hidden; margin-top: 8px; }}
+  .progress-bar .fill {{ height: 100%; background: var(--success); border-radius: 9999px; transition: width 0.3s; }}
+  .empty {{ text-align: center; padding: 40px; color: #94a3b8; }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>StitchGuard — Dashboard do Ateliê</h1>
+  <p>{current_user.email} · {total_jobs} pedidos no total</p>
+</div>
+<div class="container">
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">Total de Pedidos</div>
+      <div class="value primary">{total_jobs}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Concluídos</div>
+      <div class="value success">{concluidos}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Pendentes</div>
+      <div class="value warning">{pendentes}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Com Erro</div>
+      <div class="value error">{erros}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Taxa de Sucesso</h2>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <span style="font-size:36px;font-weight:700;color:var(--success);">{taxa}%</span>
+      <div style="flex:1;">
+        <div class="progress-bar"><div class="fill" style="width:{taxa}%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Últimos 20 Pedidos</h2>
+    {"<table><thead><tr><th>Job ID</th><th>Status</th><th>Criado em</th></tr></thead><tbody>" +
+    "".join(f'<tr><td><code>{j.id[:12]}...</code></td><td><span class="badge {j.status}">{j.status}</span></td><td>{j.criado_em}</td></tr>' for j in ultimos) +
+    "</tbody></table>" if ultimos else '<div class="empty">Nenhum pedido ainda. Faça o primeiro upload!</div>'}
+  </div>
+
+  <div class="actions">
+    <a href="/v1/fontes" class="btn btn-outline">Ver Fontes</a>
+    <a href="/v1/presets" class="btn btn-outline">Ver Presets</a>
+    <a href="/v1/maquinas" class="btn btn-outline">Ver Máquinas</a>
+    <a href="/v1/formatos" class="btn btn-outline">Ver Formatos</a>
+  </div>
+</div>
+</body>
+</html>"""
+
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=html)
 
 
 # ---------------------------------------------------------------------------
@@ -1103,6 +1317,63 @@ async def webhook_typeform(request: Request):
         "job_id": resultado.get("job_id"),
         "mensagem": f"Pedido criado para {dados.get('nome', 'cliente')}",
     }
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp — notificações
+# ---------------------------------------------------------------------------
+class WhatsAppRequest(BaseModel):
+    """Corpo de POST /v1/notificar/whatsapp."""
+
+    telefone: str
+    job_id: str | None = None
+    mensagem: str | None = None
+    tipo: str = "entrega"
+
+
+@app.post("/v1/notificar/whatsapp")
+def enviar_whatsapp_endpoint(
+    payload: WhatsAppRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Envia notificação via WhatsApp (Evolution API / Meta / Z-API)."""
+    from infra.whatsapp import enviar_whatsapp
+
+    resultado = enviar_whatsapp(
+        telefone=payload.telefone,
+        mensagem=payload.mensagem or "",
+        job_id=payload.job_id,
+        download_url=f"{BASE_URL}/v1/artefatos/{payload.job_id}" if payload.job_id else None,
+        tipo=payload.tipo,
+    )
+
+    if not resultado.get("ok"):
+        raise HTTPException(status_code=502, detail=resultado.get("error", "Erro ao enviar WhatsApp"))
+
+    log.info("whatsapp.enviado", telefone=payload.telefone, tipo=payload.tipo)
+    return resultado
+
+
+@app.post("/v1/notificar/whatsapp-webhook")
+async def webhook_whatsapp(request: Request):
+    """Recebe mensagens do WhatsApp (webhook) — respostas automáticas."""
+    from infra.whatsapp import processar_webhook_whatsapp
+
+    payload = await request.json()
+    resultado = processar_webhook_whatsapp(payload)
+
+    # Se for resposta automática, enviar de volta
+    if resultado.get("auto_resposta"):
+        from infra.whatsapp import enviar_whatsapp
+        phone = payload.get("message", {}).get("from", "")
+        if phone:
+            enviar_whatsapp(
+                telefone=phone,
+                mensagem=resultado["mensagem"],
+                tipo="auto_resposta",
+            )
+
+    return resultado
 
 
 # ---------------------------------------------------------------------------

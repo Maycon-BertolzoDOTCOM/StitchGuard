@@ -20,7 +20,9 @@ ignore = [
     "PLR2004", # magic value used in comparison
     "PLW0603", # global statement usage
     "RUF010",  # use explicit conversion flag
+    "RUF012",  # mutable class attribute
     "RUF059",  # unpacked variable never used
+    "UP017",   # datetime.UTC alias
     "ARG001",  # unused function argument
     "ARG002",  # unused method argument
     "S101",    # assert usage

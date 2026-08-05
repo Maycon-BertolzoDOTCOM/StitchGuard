@@ -181,3 +181,11 @@ class TestDashboard:
     def test_dashboard_sem_auth(self):
         r = client.get("/v1/dashboard")
         assert r.status_code == 401
+
+    def test_dashboard_html(self):
+        headers = _auth_header()
+        r = client.get("/v1/dashboard/html", headers=headers)
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+        assert "Dashboard do Ateliê" in r.text
+        assert "StitchGuard" in r.text
