@@ -158,7 +158,24 @@ def auto_digitize(
     pontos = []
     h, w = binary.shape
 
-    for contour in contours:
+    # Ordenar contornos por área (maior primeiro)
+    contours_sorted = sorted(contours, key=cv2.contourArea, reverse=True)
+
+    for idx, contour in enumerate(contours_sorted):
+        # Primeiro ponto do contorno
+        first_pt = contour[0][0]
+        fx, fy = int(first_pt[0]) * scale, int(first_pt[1]) * scale
+
+        # TRIM entre contornos (na posição do próximo contorno)
+        if idx > 0:
+            pontos.append({"x": fx, "y": fy, "type": "JUMP", "color": 0})
+            pontos.append({"x": fx, "y": fy, "type": "TRIM", "color": 0})
+
+        # Lock stitch no início (STOP + tiny stitches)
+        pontos.append({"x": fx, "y": fy, "type": "STOP", "color": 0})
+        for offset in [0, 0.3, 0]:
+            pontos.append({"x": fx + offset, "y": fy, "type": "STITCH", "color": 0})
+
         # Contorno (running stitch)
         contour_points = _simplificar_contorno(contour, max_stitch_mm)
         for x, y in contour_points:
@@ -169,11 +186,23 @@ def auto_digitize(
                 "color": 0,
             })
 
+        # Lock stitch no final (tiny stitches + STOP)
+        last_pt = contour[-1][0]
+        lx, ly = int(last_pt[0]) * scale, int(last_pt[1]) * scale
+        for offset in [0, -0.3, 0]:
+            pontos.append({"x": lx + offset, "y": ly, "type": "STITCH", "color": 0})
+        pontos.append({"x": lx, "y": ly, "type": "STOP", "color": 0})
+
         # Preenchimento (fill stitch) para contornos grandes
         area = cv2.contourArea(contour)
         if area > 100:  # Só preencher se área significativa
             fill_points = _preenchimento_raster(contour, binary, densidade, fill_angle, scale)
-            pontos.extend(fill_points)
+            if fill_points:
+                # JUMP + TRIM antes do preenchimento (na posição do primeiro ponto)
+                first_fill = fill_points[0]
+                pontos.append({"x": first_fill["x"], "y": first_fill["y"], "type": "JUMP", "color": 0})
+                pontos.append({"x": first_fill["x"], "y": first_fill["y"], "type": "TRIM", "color": 0})
+                pontos.extend(fill_points)
 
     # 4. Adicionar underlay se configurado
     if config["underlay"]:
@@ -219,7 +248,12 @@ def _preenchimento_raster(
     angle: float,
     scale: float,
 ) -> list[dict]:
-    """Gera pontos de preenchimento raster dentro do contorno."""
+    """Gera pontos de preenchimento raster serpentine dentro do contorno.
+
+    Usa padrão zigzag para minimizar jumps longos.
+    """
+    import math
+
     # Criar máscara do contorno
     mask = np.zeros_like(binary)
     cv2.fillPoly(mask, [contour], 255)
@@ -228,47 +262,50 @@ def _preenchimento_raster(
     x, y, w, h = cv2.boundingRect(contour)
     pontos = []
 
-    # Espaçamento entre linhas baseado na densidade
-    spacing = 1.0 / densidade  # mm entre linhas
-
-    # Gerar linhas de preenchimento na direção do ângulo
-    import math
-    rad = math.radians(angle)
-    cos_a, sin_a = math.cos(rad), math.sin(rad)
+    # Espaçamento entre linhas baseado na densidade (pontos/mm)
+    spacing_px = max(2, int(1.0 / (densidade * scale)))
 
     # Centro do contorno
     cx, cy = x + w // 2, y + h // 2
     max_dim = max(w, h)
 
-    # Gerar linhas
-    for offset in range(-max_dim, max_dim, max(1, int(spacing * scale))):
-        # Linha horizontal rotacionada
+    # Gerar linhas de preenchimento (serpentine)
+    rad = math.radians(angle)
+    cos_a, sin_a = math.cos(rad), math.sin(rad)
+
+    line_num = 0
+    for offset in range(-max_dim, max_dim, spacing_px):
+        # Linha perpendicular ao ângulo
         x1 = cx + offset
         y1 = cy - max_dim
         x2 = cx + offset
         y2 = cy + max_dim
 
-        # Rotacionar pontos
+        # Rotacionar
         rx1 = cos_a * (x1 - cx) - sin_a * (y1 - cy) + cx
         ry1 = sin_a * (x1 - cx) + cos_a * (y1 - cy) + cy
         rx2 = cos_a * (x2 - cx) - sin_a * (y2 - cy) + cx
         ry2 = sin_a * (x2 - cx) + cos_a * (y2 - cy) + cy
 
-        # Amostrar pontos na linha
+        # Coletar pontos dentro da máscara
+        linha_pontos = []
         steps = max(1, int(((rx2 - rx1) ** 2 + (ry2 - ry1) ** 2) ** 0.5 / 0.5))
         for t in range(steps):
             px = rx1 + (rx2 - rx1) * t / steps
             py = ry1 + (ry2 - ry1) * t / steps
-
-            # Verificar se está dentro da máscara
             if 0 <= int(py) < mask.shape[0] and 0 <= int(px) < mask.shape[1]:
                 if mask[int(py), int(px)] > 0:
-                    pontos.append({
-                        "x": px * scale,
-                        "y": py * scale,
-                        "type": "STITCH",
-                        "color": 0,
-                    })
+                    linha_pontos.append((px, py))
+
+        # Adicionar pontos em ordem serpentine
+        if linha_pontos:
+            if line_num % 2 == 0:
+                for px, py in linha_pontos:
+                    pontos.append({"x": px * scale, "y": py * scale, "type": "STITCH", "color": 0})
+            else:
+                for px, py in reversed(linha_pontos):
+                    pontos.append({"x": px * scale, "y": py * scale, "type": "STITCH", "color": 0})
+            line_num += 1
 
     return pontos
 

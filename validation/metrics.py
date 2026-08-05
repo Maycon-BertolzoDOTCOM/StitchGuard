@@ -28,7 +28,11 @@ class StitchMetrics:
         return self.extremes[3] - self.extremes[1]
 
     def jumps(self):
-        """Lista de saltos (jumps) em mm com o comando que os causou."""
+        """Lista de saltos (jumps) em mm com o comando que os causou.
+
+        TRIM e COLOR_CHANGE NÃO são considerados jumps — representam
+        corte de thread entre partes, não movimentação indevida.
+        """
         jumps = []
         prev = None
         for item in self.stitches:
@@ -36,7 +40,7 @@ class StitchMetrics:
             if prev is not None:
                 dx, dy = x - prev[0], y - prev[1]
                 dist = math.hypot(dx, dy)
-                if cmd in (pe.JUMP, pe.STOP, pe.TRIM):
+                if cmd == pe.JUMP:
                     jumps.append({"x": x, "y": y, "distance_mm": round(dist, 2), "command": cmd})
                 elif cmd == pe.STITCH and dist > 12.0:
                     jumps.append({"x": x, "y": y, "distance_mm": round(dist, 2), "command": cmd})
