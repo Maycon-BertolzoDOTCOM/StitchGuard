@@ -53,7 +53,7 @@ python -m pytest tests/ -q
 uvicorn application.main:app --reload --port 8000
 ```
 
-## Endpoints (28)
+## Endpoints (33)
 
 | Grupo | Endpoint | Descrição |
 |-------|----------|-----------|
@@ -64,10 +64,12 @@ uvicorn application.main:app --reload --port 8000
 | | `GET /v1/pedido/{id}/status` | Status do job |
 | | `GET /v1/pedido/{id}/validacoes` | Checklist de validação |
 | | `POST /v1/pedido/{id}/editar` | Pós-edição (7 operações) |
+| | `POST /v1/pedido/{id}/exportar` | Exportar para PES/EXP/VP3/XXX |
 | | `GET /v1/pedido/{id}/laudo` | Laudo técnico HTML |
 | | `GET /v1/preview/{id}` | Preview SVG |
-| **Upload** | `POST /v1/upload` | Upload SVG/PNG → .dst |
+| **Upload** | `POST /v1/upload` | Upload SVG/PNG/.dst (com validação) |
 | | `GET /v1/artefatos/{id}` | Download .dst |
+| | `GET /v1/formatos` | Formatos de exportação suportados |
 | **Billing** | `GET /v1/billing/planos` | Planos (Bronze/Prata/Ouro) |
 | | `POST /v1/billing/criar-cobranca` | Criar cobrança |
 | **Feedback** | `POST /v1/pedido/{id}/aprovar` | Aprovar matriz |
