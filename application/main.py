@@ -452,25 +452,201 @@ def listar_formatos():
     return {"formatos": FORMATOS_SUPORTADOS}
 
 
-def _dst_para_svg(dst_path: str) -> str:
-    """Converte .dst para SVG usando pyembroidery nativo."""
+# ---------------------------------------------------------------------------
+# Lettering: texto → matriz de bordado
+# ---------------------------------------------------------------------------
+class LetteringRequest(BaseModel):
+    """Corpo de POST /v1/lettering."""
+    texto: str
+    fonte: str = "block"
+    tamanho_mm: float = 10.0
+    espacamento_mm: float = 2.0
+    cor: int = 0
+    tecido: str | None = None
+
+
+@app.post("/v1/lettering")
+def criar_lettering(payload: LetteringRequest):
+    """Gera matriz de bordado a partir de texto (lettering).
+
+    Fontes disponíveis: block, script, bold.
+    Retorna job_id para download do .dst ou preview.
+    """
     import pyembroidery as pe
-    import tempfile
+    from generation.fonts import renderizar_texto, pontos_para_pattern
+
+    fontes_validas = ("block", "script", "bold")
+    if payload.fonte not in fontes_validas:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fonte '{payload.fonte}' nao suportada. Use: {', '.join(fontes_validas)}",
+        )
+
+    if not payload.texto.strip():
+        raise HTTPException(status_code=400, detail="Texto nao pode ser vazio.")
+
+    # Renderizar texto
+    pontos = renderizar_texto(
+        texto=payload.texto,
+        fonte=payload.fonte,
+        tamanho_mm=payload.tamanho_mm,
+        espacamento_mm=payload.espacamento_mm,
+        cor=payload.cor,
+    )
+
+    if not pontos:
+        raise HTTPException(status_code=422, detail="Nao foi possivel gerar pontos do texto.")
+
+    # Converter para pattern
+    pattern = pontos_para_pattern(pontos)
+
+    # Salvar .dst
+    dst_nome = f"{uuid.uuid4().hex[:8]}.dst"
+    dst_path = os.path.join(_ARTEFATOS, dst_nome)
+    pe.write(pattern, dst_path)
+
+    # Gerar preview SVG
+    svg_nome = f"{uuid.uuid4().hex[:8]}.svg"
+    svg_path = os.path.join(_ARTEFATOS, svg_nome)
+    pe.write(pattern, svg_path)
+
+    # Validar
+    params = {"tecido": payload.tecido or "generico", "maquina_id": "generica"}
+    from validation.checklist import run_checklist
+    from validation.metrics import StitchMetrics
+    metrics = StitchMetrics(dst_path)
+    resultado = run_checklist(metrics, params)
+
+    log.info("lettering.concluido", texto=payload.texto[:20], fonte=payload.fonte)
+
+    return {
+        "texto": payload.texto,
+        "fonte": payload.fonte,
+        "dst": dst_nome,
+        "preview_svg": svg_nome,
+        "resumo": {
+            "stitches": metrics.stitch_count,
+            "largura_mm": round(metrics.width_mm, 2),
+            "altura_mm": round(metrics.height_mm, 2),
+        },
+        "validacao": resultado,
+    }
+
+
+@app.get("/v1/fontes")
+def listar_fontes():
+    """Lista fontes de bordado disponíveis."""
+    return {
+        "fontes": {
+            "block": "Bloco simples sem serifa (legível em qualquer tamanho)",
+            "script": "Cursivo elegante (bordados formais)",
+            "bold": "Negrito grosso (bordados institucionais)",
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Paleta de cores de threads (cores mais usadas no bordado)
+# ---------------------------------------------------------------------------
+THREAD_COLORS = [
+    "#000000",  # Preto
+    "#FFFFFF",  # Branco
+    "#FF0000",  # Vermelho
+    "#0000FF",  # Azul
+    "#00FF00",  # Verde
+    "#FFFF00",  # Amarelo
+    "#FF6600",  # Laranja
+    "#800080",  # Roxo
+    "#FFC0CB",  # Rosa
+    "#8B4513",  # Marrom
+    "#808080",  # Cinza
+    "#FFD700",  # Dourado
+    "#C0C0C0",  # Prata
+    "#008080",  # Teal
+    "#800000",  # Bordô
+    "#000080",  # Marinho
+]
+
+
+def _dst_para_svg(dst_path: str) -> str:
+    """Converte .dst para SVG com cores das threads."""
+    import pyembroidery as pe
+
     pattern = pe.read(dst_path)
-    with tempfile.NamedTemporaryFile(suffix=".svg", delete=False, mode="w") as tmp:
-        tmp_path = tmp.name
-    try:
-        pe.write(pattern, tmp_path)
-        with open(tmp_path, "r", encoding="utf-8") as f:
-            return f.read()
-    finally:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+    bounds = pattern.bounds()
+    if not bounds:
+        return "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'></svg>"
+
+    x_min, y_min, x_max, y_max = bounds
+    width = x_max - x_min
+    height = y_max - y_min
+    if width <= 0 or height <= 0:
+        return "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'></svg>"
+
+    margin = 5
+    svg_w = width + margin * 2
+    svg_h = height + margin * 2
+
+    svg_parts = [
+        f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {svg_w:.1f} {svg_h:.1f}' width='{svg_w:.0f}' height='{svg_h:.0f}'>",
+        f"<rect width='100%' height='100%' fill='#f5f5f5'/>",
+    ]
+
+    # Agrupar pontos por cor
+    cor_atual = 0
+    path_data = []
+    stroke_parts = []
+
+    for stitch in pattern.stitches:
+        cmd = stitch[2]
+        x = stitch[0] - x_min + margin
+        y = stitch[1] - y_min + margin
+
+        if cmd == pe.COLOR_CHANGE:
+            if path_data:
+                color = THREAD_COLORS[cor_atual % len(THREAD_COLORS)]
+                d = "M " + " L ".join(f"{px:.1f},{py:.1f}" for px, py in path_data)
+                stroke_parts.append(f"<path d='{d}' stroke='{color}' stroke-width='0.5' fill='none'/>")
+            path_data = [(x, y)]
+            cor_atual += 1
+        elif cmd == pe.JUMP or cmd == pe.TRIM:
+            if path_data:
+                color = THREAD_COLORS[cor_atual % len(THREAD_COLORS)]
+                d = "M " + " L ".join(f"{px:.1f},{py:.1f}" for px, py in path_data)
+                stroke_parts.append(f"<path d='{d}' stroke='{color}' stroke-width='0.5' fill='none'/>")
+            path_data = [(x, y)]
+        elif cmd == pe.STITCH:
+            path_data.append((x, y))
+
+    # Último path
+    if path_data:
+        color = THREAD_COLORS[cor_atual % len(THREAD_COLORS)]
+        d = "M " + " L ".join(f"{px:.1f},{py:.1f}" for px, py in path_data)
+        stroke_parts.append(f"<path d='{d}' stroke='{color}' stroke-width='0.5' fill='none'/>")
+
+    svg_parts.extend(stroke_parts)
+
+    # Legenda de cores
+    cores_usadas = set()
+    for stitch in pattern.stitches:
+        if stitch[2] == pe.COLOR_CHANGE:
+            cores_usadas.add(cor_atual)
+    cores_usadas.add(0)
+
+    if len(cores_usadas) > 1:
+        svg_parts.append(f"<g transform='translate(0,{svg_h + 5})'>")
+        for i, cor_idx in enumerate(sorted(cores_usadas)):
+            color = THREAD_COLORS[cor_idx % len(THREAD_COLORS)]
+            svg_parts.append(f"<rect x='{i * 8}' y='0' width='6' height='6' fill='{color}' stroke='#333' stroke-width='0.3'/>")
+        svg_parts.append("</g>")
+
+    svg_parts.append("</svg>")
+    return "\n".join(svg_parts)
 
 
 @app.get("/v1/preview/{job_id}")
 def preview_svg(job_id: str):
-    """Retorna SVG do bordado gerado (preview visual)."""
+    """Retorna SVG do bordado gerado (preview visual com cores)."""
     job = fila.obter_job(job_id)
     if job is None or job["status"] != fila.STATUS_CONCLUIDO:
         raise HTTPException(status_code=404, detail="Preview indisponivel.")

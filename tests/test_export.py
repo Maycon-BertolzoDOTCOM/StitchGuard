@@ -94,3 +94,49 @@ class TestUploadDst:
         assert "dst" in r.json()
         assert "validacao" in r.json()
         assert r.json()["resumo"]["stitches"] > 0
+
+
+class TestLettering:
+    def test_lettering_basico(self):
+        headers = _auth_header()
+        r = client.post("/v1/lettering", json={
+            "texto": "OLA",
+            "fonte": "block",
+            "tamanho_mm": 15.0,
+        }, headers=headers)
+        assert r.status_code == 200
+        assert r.json()["texto"] == "OLA"
+        assert r.json()["fonte"] == "block"
+        assert r.json()["resumo"]["stitches"] > 0
+
+    def test_lettering_script(self):
+        headers = _auth_header()
+        r = client.post("/v1/lettering", json={
+            "texto": "BORDADO",
+            "fonte": "script",
+        }, headers=headers)
+        assert r.status_code == 200
+        assert r.json()["fonte"] == "script"
+
+    def test_lettering_fonte_invalida(self):
+        headers = _auth_header()
+        r = client.post("/v1/lettering", json={
+            "texto": "TESTE",
+            "fonte": "invalida",
+        }, headers=headers)
+        assert r.status_code == 400
+
+    def test_lettering_texto_vazio(self):
+        headers = _auth_header()
+        r = client.post("/v1/lettering", json={
+            "texto": "   ",
+            "fonte": "block",
+        }, headers=headers)
+        assert r.status_code == 400
+
+    def test_listar_fontes(self):
+        r = client.get("/v1/fontes")
+        assert r.status_code == 200
+        assert "block" in r.json()["fontes"]
+        assert "script" in r.json()["fontes"]
+        assert "bold" in r.json()["fontes"]
