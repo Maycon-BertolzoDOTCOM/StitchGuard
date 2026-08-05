@@ -5,6 +5,35 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.1.0] - 2026-08-04
+
+### Added
+- **Batch Processing**: upload em lote de múltiplos arquivos
+  - `POST /v1/batch` — processamento síncrono
+  - `POST /v1/batch/async` — processamento assíncrono via ARQ
+  - `GET /v1/batch/{id}/status` — polling de status
+- **Dashboard Visual**: interface HTML para ateliês
+  - `GET /v1/dashboard` — dados JSON
+  - `GET /v1/dashboard/html` — página HTML completa
+- **WhatsApp Integration**: notificações via WhatsApp
+  - `infra/whatsapp.py` — suporte Evolution API, Meta Cloud, Z-API
+  - `POST /v1/notificar/whatsapp` — enviar mensagem
+  - `POST /v1/notificar/whatsapp-webhook` — receber mensagens
+- **Auto-digitize melhorado**: OpenCV + raster serpentine
+  - Lock stitches (STOP) no início/fim de cada contorno
+  - TRIM/JUMP entre contornos
+  - Preenchimento raster serpentine (reduz saltos)
+  - Raster fill scoring improved: 0.5 → 0.8
+
+### Fixed
+- `validation/metrics.py`: jumps() exclui TRIM/COLOR_CHANGE (corte de thread, não salto)
+- Export .pes/.exp/.vp3 funcionando corretamente
+
+### Changed
+- Total de endpoints: 28 → 40
+- Total de testes: 176 → 199
+- `ruff.toml`: configuração limpa (regras UP removidas)
+
 ## [1.0.0] - 2026-08-04
 
 ### Added

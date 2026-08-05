@@ -9,9 +9,12 @@ Pipeline completo: **Arte → Geração → Validação → Otimização → Ent
 ## Visão Geral
 
 StitchGuard é um orquestrador autônomo de bordado que:
-- Gera arquivos `.dst` a partir de imagens (SVG/PNG)
+- Gera arquivos `.dst` a partir de imagens (SVG/PNG) via auto-digitize (OpenCV)
 - Valida automaticamente com checklist de 11 itens
-- Otimiza saltos e compensationa pull
+- Otimiza saltos e compensa pull/push
+- Processa em batch (sync e async via ARQ)
+- Dashboard visual para ateliês
+- Notificações via WhatsApp (Evolution/Meta/Z-API)
 - Entrega via Google Drive
 - Fatura via Asaas (Pix/Boleto)
 
@@ -22,7 +25,7 @@ StitchGuard é um orquestrador autônomo de bordado que:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      L1 - Application                       │
-│                    FastAPI (28 endpoints)                    │
+│                    FastAPI (40 endpoints)                    │
 ├─────────────────────────────────────────────────────────────┤
 │  L2 Domain │ L3 Generation │ L4 Validation │ L5 Commercial │
 │  Presets   │ cli_anything  │ Checklist 11  │ Asaas/Drive   │
@@ -53,7 +56,7 @@ python -m pytest tests/ -q
 uvicorn application.main:app --reload --port 8000
 ```
 
-## Endpoints (37)
+## Endpoints (40)
 
 | Grupo | Endpoint | Descrição |
 |-------|----------|-----------|
@@ -78,6 +81,13 @@ uvicorn application.main:app --reload --port 8000
 | | `POST /v1/pedido/{id}/rejeitar` | Rejeitar com observações |
 | **Notificações** | `POST /v1/notificar/enviar` | Enviar email |
 | | `POST /v1/notificar/webhook-typeform` | Webhook Typeform |
+| | `POST /v1/notificar/whatsapp` | Enviar WhatsApp |
+| | `POST /v1/notificar/whatsapp-webhook` | Webhook WhatsApp |
+| **Batch** | `POST /v1/batch` | Upload em lote (sync) |
+| | `POST /v1/batch/async` | Upload em lote (async/ARQ) |
+| | `GET /v1/batch/{id}/status` | Status do batch |
+| **Dashboard** | `GET /v1/dashboard` | Dashboard JSON |
+| | `GET /v1/dashboard/html` | Dashboard visual HTML |
 | **Entrega** | `POST /v1/entrega/upload` | Upload para Drive |
 | | `POST /v1/entrega/link` | Link de download |
 | **Auth** | `POST /v1/auth/register` | Registro |
@@ -88,8 +98,11 @@ uvicorn application.main:app --reload --port 8000
 - **Python 3.13** + **FastAPI**
 - **SQLAlchemy 2.0** (SQLite dev / PostgreSQL prod)
 - **pyembroidery** (geração .dst)
+- **OpenCV** (auto-digitize de imagens)
+- **ARQ + Redis** (processamento assíncrono)
 - **Asaas** (billing Pix/Boleto)
 - **Google Drive** (entrega)
+- **WhatsApp** (Evolution API / Meta Cloud / Z-API)
 - **Docker** (multi-stage build)
 
 ## Configuração
@@ -103,12 +116,18 @@ GOOGLE_DRIVE_CREDENTIALS=path/to/credentials.json
 SMTP_HOST=smtp.gmail.com
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
+REDIS_URL=redis://localhost:6379
+
+# WhatsApp (stub = desenvolvimento)
+WHATSAPP_PROVIDER=stub
+WHATSAPP_API_URL=http://localhost:8080
+WHATSAPP_API_TOKEN=
 ```
 
 ## Testes
 
 ```bash
-# 176 testes
+# 199 testes
 python -m pytest tests/ -v
 
 # Com cobertura
